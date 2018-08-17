@@ -18,15 +18,22 @@ var blocks = [
                             .addOutPoint().addOutPoint().addOutPoint().addOutPoint().draw()
 ];
 
-for(var i = 0; i < 30; i++) {
+for(var i = 0; i < 1; i++) {
     blocks.push(blocks[0].clone().draw());
 }
+var splines = [];
 
 var step = false;
 var block = false;
+var point = false;
+
 ctx.handle('mousedown', function(e) {
     var pos = [e.layerX, e.layerY];
     for(var i in blocks) {
+        if(point = blocks[i].crossOutPoint(pos)) {
+            splines.push(new Link(block));
+            return;
+        }
         if(blocks[i].crossMoverByPoint(pos)) {
             block = blocks[i];
             step = [block.x - e.layerX, block.y - e.layerY]
@@ -37,12 +44,31 @@ ctx.handle('mousedown', function(e) {
 ctx.handle('mouseup',   function(e) {
     step = false;
     block = false;
+    if(point) {
+        for(var i in blocks) {
+            if(blocks[i].crossInPoint([e.layerX, e.layerY])) {
+                splines[splines.length - 1].in = blocks[i];
+                console.log('fix')
+                break;
+            }
+        }
+    }
+    point = false;
 });
 ctx.handle('mousemove', function(e) {
     if(block && step) {
         block.x = e.layerX + step[0];
         block.y = e.layerY + step[1];
         block.draw();
+    }
+    if(point) {
+        var spline = splines[splines.length - 1]
+        spline.points = [
+            point, 
+            [Math.abs(point[0] + (e.layerX - point[0])/2), Math.abs(point[1] + (e.layerY - point[1])/2)],
+            [e.layerX, e.layerY]
+        ];
+        spline.draw();
     }
 });
 
@@ -126,6 +152,32 @@ function Block(x, y) {
         var bx = this.boundingBoxMover();
         return bx[0] < pos[0] && bx[1] > pos[0] && bx[2] < pos[1] && bx[3] > pos[1];
     };
+    this.crossInPoint = function(pos) {
+        var x_step = this.x - this.w/2;
+        var y_step = this.y - this.h/2;
+        for(var i in this.in_points) {
+            var point = this.in_points[i];
+            var real_point = [point[0] + x_step, point[1] + y_step];
+            if(real_point[0] + 5 > pos[0] && real_point[0] - 5 < pos[0] &&
+               real_point[1] + 5 > pos[1] && real_point[1] - 5 < pos[1]) {
+                return real_point;
+            } 
+        }
+        return false;
+    };
+    this.crossOutPoint = function(pos) {
+        var x_step = this.x + this.w/2;
+        var y_step = this.y - this.h/2;
+        for(var i in this.out_points) {
+            var point = this.out_points[i];
+            var real_point = [x_step - point[0], point[1] + y_step];
+            if(real_point[0] + 5 > pos[0] && real_point[0] - 5 < pos[0] &&
+               real_point[1] + 5 > pos[1] && real_point[1] - 5 < pos[1]) {
+                return real_point;
+            } 
+        }
+        return false;
+    };
     this.boundingBox = function() {
         return [
             this.x - this.w/2, // min x
@@ -155,5 +207,25 @@ function Block(x, y) {
         res.in_points = this.in_points;
         res.out_points = this.out_points;
         return res;
+    };
+}
+
+function Link(out) {
+    this.points = [[0,0], [0,0], [0,0]];
+    this.ctx = ctx.layer();
+    this.in = false;
+    this.out = out;
+
+    this.draw = function() {
+        var ctx = this.ctx;
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.beginPath();
+        ctx.spline(this.points);
+        ctx.stroke();
+        for(var i in this.points) {
+            ctx.beginPath();
+            ctx.arc(this.points[i][0], this.points[i][1], 3, 0, Math.PI*2);
+            ctx.fill();
+        }
     };
 }
