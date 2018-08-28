@@ -30,14 +30,18 @@ var point = false;
 ctx.handle('mousedown', function(e) {
     var pos = [e.layerX, e.layerY];
     for(var i in blocks) {
-        if(point = blocks[i].crossOutPoint(pos)) {
-            splines.push(new Link(block));
-            return;
-        }
-        if(blocks[i].crossMoverByPoint(pos)) {
-            block = blocks[i];
-            step = [block.x - e.layerX, block.y - e.layerY]
-            return;
+        if(blocks[i].crossByPoint(pos)) {
+            if(blocks[i].crossMoverByPoint(pos)) {
+                block = blocks[i];
+                step = [block.x - e.layerX, block.y - e.layerY]
+                return;
+            }
+            if(point = blocks[i].crossOutPoint(pos)) {
+                var link = new Link();
+                link.addOut(block);            
+                splines.push(link);
+                return;
+            }
         }
     }
 });
@@ -46,9 +50,10 @@ ctx.handle('mouseup',   function(e) {
     block = false;
     if(point) {
         for(var i in blocks) {
-            if(blocks[i].crossInPoint([e.layerX, e.layerY])) {
-                splines[splines.length - 1].in = blocks[i];
-                console.log('fix')
+            if(blocks[i].crossByPoint([e.layerX, e.layerY]) && (point = blocks[i].crossInPoint([e.layerX, e.layerY]))) {
+                splines[splines.length - 1].setIn(blocks[i], point);
+                splines[splines.length - 1].calc(0, false, point);
+                splines[splines.length - 1].draw();
                 break;
             }
         }
@@ -62,12 +67,13 @@ ctx.handle('mousemove', function(e) {
         block.draw();
     }
     if(point) {
-        var spline = splines[splines.length - 1]
-        spline.points = [
-            point, 
-            [Math.abs(point[0] + (e.layerX - point[0])/2), Math.abs(point[1] + (e.layerY - point[1])/2)],
-            [e.layerX, e.layerY]
-        ];
+        var spline = splines[splines.length - 1];
+        spline.calc(0, point, [e.layerX, e.layerY]);
+        // spline._points[0] = [
+        //     point, 
+        //     [Math.abs(point[0] + (e.layerX - point[0])/2), Math.abs(point[1] + (e.layerY - point[1])/2)],
+        //     [e.layerX, e.layerY]
+        // ];
         spline.draw();
     }
 });
@@ -80,6 +86,7 @@ function Block(x, y) {
     this.h = 80;
     this.th = 20;
 
+    this.links = []; // only ins
     this.in_points = [];
     this.out_points = [];
     
@@ -148,6 +155,10 @@ function Block(x, y) {
 
         return this;
     };
+    this.crossByPoint = function(pos) {
+        var bx = this.boundingBox();
+        return bx[0] < pos[0] && bx[1] > pos[0] && bx[2] < pos[1] && bx[3] > pos[1];
+    };
     this.crossMoverByPoint = function(pos) {
         var bx = this.boundingBoxMover();
         return bx[0] < pos[0] && bx[1] > pos[0] && bx[2] < pos[1] && bx[3] > pos[1];
@@ -210,22 +221,47 @@ function Block(x, y) {
     };
 }
 
-function Link(out) {
-    this.points = [[0,0], [0,0], [0,0]];
+function Link() {
+    this._points = [];
     this.ctx = ctx.layer();
-    this.in = false;
-    this.out = out;
+    this._in = false;
+    this._out = [];
+
+    this.addOut = function(out) {
+        this._out.push(out);
+        this._points.push([[0,0], [0,0]]);
+    };
+
+    this.setIn = function(_in) {
+        this._in = _in;
+    };
+
+    this.calc = function(i, start, end) {
+        var points = this._points[i];
+        if(start) {
+            points[0] = start;
+        }
+        if(end) {
+            points[points.length - 1] = end;
+        }
+        // [Math.abs(point[0] + (e.layerX - point[0])/2), Math.abs(point[1] + (e.layerY - point[1])/2)],
+    };
 
     this.draw = function() {
         var ctx = this.ctx;
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-        ctx.beginPath();
-        ctx.spline(this.points);
-        ctx.stroke();
-        for(var i in this.points) {
+        for(var i in this._out) {
+            var points = this._points[i];
+            
             ctx.beginPath();
-            ctx.arc(this.points[i][0], this.points[i][1], 3, 0, Math.PI*2);
-            ctx.fill();
+            ctx.spline(points);
+            ctx.stroke();
+
+            for(var i in points) {
+                ctx.beginPath();
+                ctx.arc(points[i][0], points[i][1], 3, 0, Math.PI*2);
+                ctx.fill();
+            }
         }
     };
 }
