@@ -238,12 +238,47 @@ function Link() {
 
     this.calc = function(i, start, end) {
         var points = this._points[i];
+        if(points.length < 4) {
+            points.length = 4;
+        }
         if(start) {
             points[0] = start;
         }
         if(end) {
             points[points.length - 1] = end;
         }
+        points[1] = points[0];
+        points[points.length - 2] = points[points.length - 1];
+
+        var k1 = [
+            (points[2][0] - points[0][0]),
+            (points[2][1] - points[0][1])
+        ];
+
+        var k2 = [
+            (points[points.length - 3][0] - points[points.length - 1][0]),
+            (points[points.length - 3][1] - points[points.length - 1][1])
+        ];
+
+        // var kl = [
+        //     Math.abs(k1[0] - k2[0]),
+        //     Math.abs(k1[1] - k2[1])
+        // ]
+        // console.log(kl[0]/kl[1])
+
+        var point1 = [
+            points[0][0]+k1[0]/4, 
+            points[0][1]+k1[1]/5
+        ];
+        var point2 = [
+            points[points.length - 1][0]+k2[0]/4, 
+            points[points.length - 1][1]+k2[1]/5
+        ];
+
+        console.log
+
+        points[1] = point1;
+        points[points.length - 2] = point2;
         // [Math.abs(point[0] + (e.layerX - point[0])/2), Math.abs(point[1] + (e.layerY - point[1])/2)],
     };
 
