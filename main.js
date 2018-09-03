@@ -15,17 +15,14 @@ var ctx    = canvas.getContext('2d');
 
 var blocks = [
     new Block(120, 110).addInPoint().addInPoint().addInPoint().addInPoint()
-                            .addOutPoint().addOutPoint().addOutPoint().addOutPoint().draw()
+                            .addOutPoint().addOutPoint().addOutPoint().addOutPoint().draw(),
+    new Block(300, 300).addInPoint().addOutPoint().addOutPoint().draw()
 ];
-
-for(var i = 0; i < 1; i++) {
-    blocks.push(blocks[0].clone().draw());
-}
-var splines = [];
 
 var step = false;
 var block = false;
 var point = false;
+var link = false;
 
 ctx.handle('mousedown', function(e) {
     var pos = [e.layerX, e.layerY];
@@ -36,12 +33,19 @@ ctx.handle('mousedown', function(e) {
                 step = [block.x - e.layerX, block.y - e.layerY]
                 return;
             }
-            if(point = blocks[i].crossOutPoint(pos)) {
-                var link = new Link();
-                link.addOut(block);            
-                splines.push(link);
+            var p_data = blocks[i].crossInPoint(pos);
+            if(p_data) {
+                point = p_data[0];
+                link = p_data[1];
+                link.addOut(block);
                 return;
             }
+            p_data = blocks[i].crossOutPoint(pos);
+            if(p_data) {
+                point = p_data[0];
+                
+            }
+            point = false;
         }
     }
 });
@@ -50,10 +54,11 @@ ctx.handle('mouseup',   function(e) {
     block = false;
     if(point) {
         for(var i in blocks) {
-            if(blocks[i].crossByPoint([e.layerX, e.layerY]) && (point = blocks[i].crossInPoint([e.layerX, e.layerY]))) {
-                splines[splines.length - 1].setIn(blocks[i], point);
-                splines[splines.length - 1].calc(0, false, point);
-                splines[splines.length - 1].draw();
+            var crossBlock = blocks[i].crossByPoint([e.layerX, e.layerY]);
+            if(crossBlock && (point = blocks[i].crossOutPoint([e.layerX, e.layerY]))) {
+                point[1].push(link);
+                link.calc(link.setOut(blocks[i]), false, point[0]);
+                link.draw();
                 break;
             }
         }
@@ -66,15 +71,9 @@ ctx.handle('mousemove', function(e) {
         block.y = e.layerY + step[1];
         block.draw();
     }
-    if(point) {
-        var spline = splines[splines.length - 1];
-        spline.calc(0, point, [e.layerX, e.layerY]);
-        // spline._points[0] = [
-        //     point, 
-        //     [Math.abs(point[0] + (e.layerX - point[0])/2), Math.abs(point[1] + (e.layerY - point[1])/2)],
-        //     [e.layerX, e.layerY]
-        // ];
-        spline.draw();
+    if(point && link) {
+        link.calc(0, point, [e.layerX, e.layerY]);
+        link.draw();
     }
 });
 
@@ -86,7 +85,8 @@ function Block(x, y) {
     this.h = 80;
     this.th = 20;
 
-    this.links = []; // only ins
+    this.in_links = [];
+    this.out_links = [];
     this.in_points = [];
     this.out_points = [];
     
@@ -108,7 +108,7 @@ function Block(x, y) {
         ];
 
         var pi2 = Math.PI/2;
-        var i = 0
+        var i = 0;
 
         ctx.fillStyle = 'rgba(44, 48, 44, 0.5)';
         ctx.beginPath();
@@ -140,17 +140,30 @@ function Block(x, y) {
         ctx.stroke();
 
         ctx.fillStyle = 'black';
-        for(let i in this.in_points) {
+        for(var i in this.in_points) {
+            // points
             var point = this.in_points[i];
             ctx.beginPath();
             ctx.arc(x - w/2 + point[0], y - h/2 + point[1], 3, 0, Math.PI*2);
             ctx.fill();
+            //links
+            var link = this.in_links[i];
+            link.calc('*', this.realInPoint(point), false);
+            link.draw();
         }
-        for(let i in this.out_points) {
+        for(var i in this.out_points) {
+            //point
             var point = this.out_points[i];
             ctx.beginPath();
             ctx.arc(x + w/2 - point[0], y - h/2 + point[1], 3, 0, Math.PI*2);
             ctx.fill();
+            //links
+            var links = this.out_links[i];
+            for(var j = 0; j < links.length; j++) {
+                var link = links[j];
+                link.calc('*', false, this.realOutPoint(point));
+                link.draw();
+            }
         }
 
         return this;
@@ -163,6 +176,24 @@ function Block(x, y) {
         var bx = this.boundingBoxMover();
         return bx[0] < pos[0] && bx[1] > pos[0] && bx[2] < pos[1] && bx[3] > pos[1];
     };
+    this.realInPoint = function(i) {
+        var x_step = this.x - this.w/2;
+        var y_step = this.y - this.h/2;
+        var point = (Array.isArray(i)) ? i : this.in_points[i];
+        return [
+            point[0] + x_step,
+            point[1] + y_step
+        ];
+    };
+    this.realOutPoint = function(i) {
+        var x_step = this.x + this.w/2;
+        var y_step = this.y - this.h/2;
+        var point = (Array.isArray(i)) ? i : this.in_points[i];
+        return [
+            x_step - point[0],
+            point[1] + y_step
+        ];
+    };
     this.crossInPoint = function(pos) {
         var x_step = this.x - this.w/2;
         var y_step = this.y - this.h/2;
@@ -171,7 +202,7 @@ function Block(x, y) {
             var real_point = [point[0] + x_step, point[1] + y_step];
             if(real_point[0] + 5 > pos[0] && real_point[0] - 5 < pos[0] &&
                real_point[1] + 5 > pos[1] && real_point[1] - 5 < pos[1]) {
-                return real_point;
+                return [real_point, this.in_links[i]];
             } 
         }
         return false;
@@ -184,7 +215,7 @@ function Block(x, y) {
             var real_point = [x_step - point[0], point[1] + y_step];
             if(real_point[0] + 5 > pos[0] && real_point[0] - 5 < pos[0] &&
                real_point[1] + 5 > pos[1] && real_point[1] - 5 < pos[1]) {
-                return real_point;
+                return [real_point, this.out_links[i]];
             } 
         }
         return false;
@@ -207,21 +238,31 @@ function Block(x, y) {
     };
     this.addInPoint = function() {
         this.in_points.push([10, this.in_points.length * 13 + this.th + 10]);
+        this.in_links[this.in_links.push(new Link()) - 1].setIn(this).id = this.in_links.length - 1;
         return this;
     };
     this.addOutPoint = function() {
         this.out_points.push([10, this.out_points.length * 13 + this.th + 10]);
+        this.out_links.push([]);
         return this;
     };
     this.clone = function() {
         var res = new Block(this.x, this.y);
-        res.in_points = this.in_points;
-        res.out_points = this.out_points;
+        // res.in_points = this.in_points;
+        // res.out_points = this.out_points;
+        // res.in_links = this.in_links;
+        for(var i = 0; i < this.in_points.length; i++) {
+            res.addInPoint();
+        }
+        for(var i = 0; i < this.out_points.length; i++) {
+            res.addOutPoint();
+        }
         return res;
     };
 }
 
 function Link() {
+    this.i = 0;
     this._points = [];
     this.ctx = ctx.layer();
     this._in = false;
@@ -230,56 +271,96 @@ function Link() {
     this.addOut = function(out) {
         this._out.push(out);
         this._points.push([[0,0], [0,0]]);
+        return this;
+    };
+
+    this.setOut = function(out) {
+        this._out[this._out.length - 1] = out;
+        return this._out.length - 1;
     };
 
     this.setIn = function(_in) {
         this._in = _in;
+        return this;
     };
 
     this.calc = function(i, start, end) {
-        var points = this._points[i];
-        if(points.length < 4) {
-            points.length = 4;
+        if(i === '*') {
+            for(var i = 0; i < this._points.length; i++) {
+                var points = this._points[i];
+                if(!points.length) {
+                    return;
+                }
+                if(points.length < 4) {
+                    points.length = 4;
+                }
+                if(start) {
+                    points[0] = start;
+                }
+                if(end) {
+                    points[points.length - 1] = end;
+                }
+                points[1] = points[0];
+                points[points.length - 2] = points[points.length - 1];
+
+                var k1 = [
+                    (points[2][0] - points[0][0]),
+                    (points[2][1] - points[0][1])
+                ];
+        
+                var k2 = [
+                    (points[points.length - 3][0] - points[points.length - 1][0]),
+                    (points[points.length - 3][1] - points[points.length - 1][1])
+                ];
+        
+                var point1 = [
+                    points[0][0]+k1[0]/4, 
+                    points[0][1]+k1[1]/5
+                ];
+                var point2 = [
+                    points[points.length - 1][0]+k2[0]/4, 
+                    points[points.length - 1][1]+k2[1]/5
+                ];
+        
+                points[1] = point1;
+                points[points.length - 2] = point2;
+            }
+        } else {
+            var points = this._points[i];
+            if(points.length < 4) {
+                points.length = 4;
+            }
+            if(start) {
+                points[0] = start;
+            }
+            if(end) {
+                points[points.length - 1] = end;
+            }
+            points[1] = points[0];
+            points[points.length - 2] = points[points.length - 1];
+    
+            var k1 = [
+                (points[2][0] - points[0][0]),
+                (points[2][1] - points[0][1])
+            ];
+    
+            var k2 = [
+                (points[points.length - 3][0] - points[points.length - 1][0]),
+                (points[points.length - 3][1] - points[points.length - 1][1])
+            ];
+    
+            var point1 = [
+                points[0][0]+k1[0]/4, 
+                points[0][1]+k1[1]/5
+            ];
+            var point2 = [
+                points[points.length - 1][0]+k2[0]/4, 
+                points[points.length - 1][1]+k2[1]/5
+            ];
+    
+            points[1] = point1;
+            points[points.length - 2] = point2;
         }
-        if(start) {
-            points[0] = start;
-        }
-        if(end) {
-            points[points.length - 1] = end;
-        }
-        points[1] = points[0];
-        points[points.length - 2] = points[points.length - 1];
-
-        var k1 = [
-            (points[2][0] - points[0][0]),
-            (points[2][1] - points[0][1])
-        ];
-
-        var k2 = [
-            (points[points.length - 3][0] - points[points.length - 1][0]),
-            (points[points.length - 3][1] - points[points.length - 1][1])
-        ];
-
-        // var kl = [
-        //     Math.abs(k1[0] - k2[0]),
-        //     Math.abs(k1[1] - k2[1])
-        // ]
-        // console.log(kl[0]/kl[1])
-
-        var point1 = [
-            points[0][0]+k1[0]/4, 
-            points[0][1]+k1[1]/5
-        ];
-        var point2 = [
-            points[points.length - 1][0]+k2[0]/4, 
-            points[points.length - 1][1]+k2[1]/5
-        ];
-
-        console.log
-
-        points[1] = point1;
-        points[points.length - 2] = point2;
-        // [Math.abs(point[0] + (e.layerX - point[0])/2), Math.abs(point[1] + (e.layerY - point[1])/2)],
     };
 
     this.draw = function() {
