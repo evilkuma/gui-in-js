@@ -1,4 +1,7 @@
 
+(function() {
+    
+})();
 var canvas = document.createElement('canvas');
 canvas.width = 800;
 canvas.height = 500;
@@ -19,6 +22,7 @@ var blocks = [
     new Block(300, 300).addInPoint().addOutPoint().addOutPoint().draw()
 ];
 
+var out_data = null; //kostil for out save
 var step = false;
 var block = false;
 var point = false;
@@ -28,8 +32,8 @@ ctx.handle('mousedown', function(e) {
     var pos = [e.layerX, e.layerY];
     for(var i in blocks) {
         if(blocks[i].crossByPoint(pos)) {
+            block = blocks[i];
             if(blocks[i].crossMoverByPoint(pos)) {
-                block = blocks[i];
                 step = [block.x - e.layerX, block.y - e.layerY]
                 return;
             }
@@ -43,26 +47,40 @@ ctx.handle('mousedown', function(e) {
             p_data = blocks[i].crossOutPoint(pos);
             if(p_data) {
                 point = p_data[0];
-                
+                out_data = p_data[1];
+                link = new Link();
+                link.addOut(blocks[i]);
+                return;
             }
             point = false;
         }
     }
 });
 ctx.handle('mouseup',   function(e) {
-    step = false;
-    block = false;
     if(point) {
         for(var i in blocks) {
-            var crossBlock = blocks[i].crossByPoint([e.layerX, e.layerY]);
-            if(crossBlock && (point = blocks[i].crossOutPoint([e.layerX, e.layerY]))) {
-                point[1].push(link);
-                link.calc(link.setOut(blocks[i]), false, point[0]);
-                link.draw();
-                break;
+            if(blocks[i].crossByPoint([e.layerX, e.layerY])) {
+                if(link._in && (point = blocks[i].crossOutPoint([e.layerX, e.layerY]))) {
+                    point[1].push(link);
+                    link.calc(link.setOut(blocks[i]), false, point[0]);
+                    link.draw();
+                    break;
+                }
+                if(!link._in && (point = blocks[i].crossInPoint([e.layerX, e.layerY]))) {
+                    var end = link._points[0][0];
+                    link.destroy();
+                    link = point[1];
+                    out_data.push(link); // point[1].push(link);
+                    link.addOut(block);
+                    link.calc('last', point[0], end);
+                    link.draw();
+                    break;
+                }
             }
         }
     }
+    step = false;
+    block = false;
     point = false;
 });
 ctx.handle('mousemove', function(e) {
@@ -285,6 +303,9 @@ function Link() {
     };
 
     this.calc = function(i, start, end) {
+        if(i === 'last') {
+            i = this._out.length - 1;
+        }
         if(i === '*') {
             for(var i = 0; i < this._points.length; i++) {
                 var points = this._points[i];
@@ -379,5 +400,11 @@ function Link() {
                 ctx.fill();
             }
         }
+    };
+
+    this.destroy = function() {
+        // this.ctx.destroy(); TODO: realese in layers lib
+        this.ctx.canvas.parentNode.removeChild(this.ctx.canvas);
+        delete this
     };
 }
